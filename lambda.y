@@ -5,75 +5,97 @@ class BaseLambdaExpressionParser
 # <abstraction> ::= &<variable>.<lambda-expression>
 
 rule
+
 lambda_expression : variable
     | constant
     | application
     | abstraction
     {
 		result = val[0]
-	 }
+    }
+
 variable : IDENT
     {
 		result = VariableNode.new(val[0])
-	 }
+    }
 
 constant : number | operator | combinator
     {
 		result = val[0]
-	 }
+    }
+
 number : NUMBER
     {
       result = ConstantNode.new(val[0])
     }
+
 operator : arithmetic_operator | predicate
     {
 		result = val[0]
     }
+
 arithmetic_operator : plus | mult | succ | pred
     {
 		result = val[0]
     }
+
 plus : '+'
     {
 		result = parse_parse('&m.&n.&f.&x.((m)f)((n)f)x')
     }
+
 mult : '*'
     {
 		result = parse_parse('&m.&n.&f.(m)(n)f')
     }
+
 succ : SUCC
     {
 		result = parse_parse('&n.&f.&x.(f)((n)f)x')
     }
+
 pred : PRED
     {
 		zero = '&f.&x.x'
 		result = parse_parse("&n.(((n)&p.&z.((z)(\#{succ})(p)\#{true})(p)\#{true})&z.((z)#{zero})#{zero})\#{false}")
     }
+
 predicate : ZERO
     {
 		result = parse_parse('&n.((n)(#{true})#{false})#{true}')
     }
+
 combinator : true | false
     {
 		 result = val[0]
-	 }
+    }
+
 true : TRUE
     {
 		result = parse_parse('&x.&y.x')
     }
+
 false : FALSE
     {
 		result = parse_parse('&x.&y.y')
     }
+
 application : '(' lambda_expression ')' lambda_expression
     {
 		result = ApplicationNode.new(val[1], val[3])
     }
-abstraction : '&' variable '.' lambda_expression
+
+abstraction : lambda variable '.' lambda_expression
     {
 		result = AbstractionNode.new(val[1], val[3])
-	 }
+    }
+
+lambda : '&' | '\\'
+    {
+		result = val[0]
+    }
+
+
 end
 
 ---- header
