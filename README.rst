@@ -1,25 +1,42 @@
-== rambda
-Ruby‚Å‹Lq‚µ‚½Œ^‚È‚µƒ‰ƒ€ƒ_ŒvZ‚ğs‚¤ŠÈ–ñ‹@‚Å‚·B
+======
+rambda
+======
 
+ã“ã‚Œã€ä½•ã‚ˆ
+----------
 
+Rubyã§è¨˜è¿°ã—ãŸå‹ãªã—ãƒ©ãƒ ãƒ€è¨ˆç®—ã‚’è¡Œã†ç°¡ç´„æ©Ÿã§ã™ã€‚
 
+ãƒ¡ãƒ¢
+----
 
 the revised alpha-rule
-alpha &x.E -> &z.(&x.E)z for any z /= phi(E)
+^^^^^^^^^^^^^^^^^^^^^^
+
+- alpha &x.E -> &z.(&x.E)z for any z /= phi(E)
 
 the revised beta-rules
-beta1 (&x.x)Q -> Q
-beta2 (&x.y)Q -> y
-beta3 (&x.&y.E)Q -> &x.E
-beta4 (&x.&y.E)Q -> &y.(&x.E)Q
-beta5 (&x.(E1)E2)Q -> ((&x.E1)Q)(&x.E2)Q
+^^^^^^^^^^^^^^^^^^^^^^
 
+- beta1 (&x.x)Q -> Q
+- beta2 (&x.y)Q -> y
+- beta3 (&x.&y.E)Q -> &x.E
+- beta4 (&x.&y.E)Q -> &y.(&x.E)Q
+- beta5 (&x.(E1)E2)Q -> ((&x.E1)Q)(&x.E2)Q
 
-# succ
+ä¾‹
+--
+
+succ
+^^^^
+
+::
+
 &n.&f.&x.(f)((n)f)x
 
 
-# ToDo
-# OptionParser, optparse ‚ÌÀ‘•
+ToDo
+----
+ç°¡ç´„è©³ç´°è¡¨ç¤ºãƒ¢ãƒ¼ãƒ‰ã®å®Ÿè£…
 
 
