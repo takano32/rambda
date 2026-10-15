@@ -10,9 +10,6 @@ lambda_expression : variable
     | constant
     | application
     | abstraction
-    {
-		result = val[0]
-    }
 
 variable : IDENT
     {
@@ -20,9 +17,6 @@ variable : IDENT
     }
 
 constant : number | operator | combinator
-    {
-		result = val[0]
-    }
 
 number : NUMBER
     {
@@ -30,14 +24,8 @@ number : NUMBER
     }
 
 operator : arithmetic_operator | predicate
-    {
-		result = val[0]
-    }
 
 arithmetic_operator : plus | mult | succ | pred
-    {
-		result = val[0]
-    }
 
 plus : '+'
     {
@@ -54,21 +42,20 @@ succ : SUCC
 		result = parse_parse('&n.&f.&x.(f)((n)f)x')
     }
 
+# pred n = snd (n (&p.pair (succ (fst p)) (fst p)) (pair 0 0))
+#   pair a b = &z.((z)a)b, fst p = (p)true, snd p = (p)false, 0 = &f.&x.x
 pred : PRED
     {
-		zero = '&f.&x.x'
-		result = parse_parse("&n.(((n)&p.&z.((z)(\#{succ})(p)\#{true})(p)\#{true})&z.((z)#{zero})#{zero})\#{false}")
+		result = parse_parse('&n.(((n)&p.&z.((z)(#{succ})(p)#{true})(p)#{true})&z.((z)&f.&x.x)&f.&x.x)#{false}')
     }
 
+# zero n = (n (&x.false)) true, where (true)false = &y.false
 predicate : ZERO
     {
 		result = parse_parse('&n.((n)(#{true})#{false})#{true}')
     }
 
 combinator : true | false
-    {
-		 result = val[0]
-    }
 
 true : TRUE
     {
@@ -91,9 +78,6 @@ abstraction : lambda variable '.' lambda_expression
     }
 
 lambda : '&' | '\\'
-    {
-		result = val[0]
-    }
 
 
 end
@@ -103,6 +87,9 @@ end
 require 'stringio'
 
 ---- inner
+  # racc trace output; effective only when the parser was generated with racc -g
+  attr_accessor :yydebug
+
   def parse( f )
     @q = []
     f.each{|line|
@@ -123,14 +110,13 @@ require 'stringio'
           @q.push [:IDENT, $&]
         when /\A\d+/o
           @q.push [:NUMBER, $&.to_i]
-        when /\A.|\n/o
+        when /\A./o
           @q.push [$&, $&]
         end
         line = $'
       end
     }
     @q.push [false, '$end']
-    @yydebug = true
     do_parse
   end
 
@@ -140,6 +126,7 @@ require 'stringio'
 
   def parse_parse(str)
     parser = self.class.new
-	 sio = StringIO.new(str)
-	 return parser.parse(sio)    
+    parser.yydebug = @yydebug
+    sio = StringIO.new(str)
+    return parser.parse(sio)
   end
