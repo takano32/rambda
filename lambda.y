@@ -6,10 +6,37 @@ class BaseLambdaExpressionParser
 
 rule
 
-lambda_expression : variable
-    | constant
+lambda_expression : atom
     | application
+
+atom : variable
+    | constant
     | abstraction
+
+# (E1)(E2)...(En)E: the function parts are collected into a list, reduced
+# after each ')', and folded from the right.  Parsing the chain as nested
+# applications instead would push the whole chain on the LR stack, and each
+# reduction copies a slice of that stack (quadratic in the length of the
+# chain, i.e. in the size of a Church numeral).
+application : functions atom
+    {
+      result = val[1]
+      val[0].reverse_each {|f| result = ApplicationNode.new(f, result) }
+    }
+
+functions : function
+    {
+      result = [val[0]]
+    }
+    | functions function
+    {
+      result = val[0].push(val[1])
+    }
+
+function : '(' lambda_expression ')'
+    {
+      result = val[1]
+    }
 
 variable : IDENT
     {
@@ -67,11 +94,6 @@ false : FALSE
 		result = parse_parse('&x.&y.y')
     }
 
-application : '(' lambda_expression ')' lambda_expression
-    {
-		result = ApplicationNode.new(val[1], val[3])
-    }
-
 abstraction : lambda variable '.' lambda_expression
     {
 		result = AbstractionNode.new(val[1], val[3])
@@ -85,6 +107,7 @@ end
 ---- header
 
 require 'stringio'
+require 'strscan'
 
 ---- inner
   # racc trace output; effective only when the parser was generated with racc -g
@@ -93,27 +116,27 @@ require 'stringio'
   def parse( f )
     @q = []
     f.each{|line|
-      while line.size > 0 do
-        case line
-        when /\A\s+/o
-        when /\A#\{succ\}/o
-          @q.push [:SUCC, $&]
-        when /\A#\{pred\}/o
-          @q.push [:PRED, $&]
-        when /\A#\{zero\}/o
-          @q.push [:ZERO, $&]
-        when /\A#\{true\}/o
-          @q.push [:TRUE, $&]
-        when /\A#\{false\}/o
-          @q.push [:FALSE, $&]
-        when /\A[a-zA-Z_][0-9a-zA-Z_]*/o
-          @q.push [:IDENT, $&]
-        when /\A\d+/o
-          @q.push [:NUMBER, $&.to_i]
-        when /\A./o
-          @q.push [$&, $&]
+      s = StringScanner.new(line)
+      until s.eos? do
+        if s.skip(/\s+/)
+        elsif s.scan(/#\{succ\}/)
+          @q.push [:SUCC, s.matched]
+        elsif s.scan(/#\{pred\}/)
+          @q.push [:PRED, s.matched]
+        elsif s.scan(/#\{zero\}/)
+          @q.push [:ZERO, s.matched]
+        elsif s.scan(/#\{true\}/)
+          @q.push [:TRUE, s.matched]
+        elsif s.scan(/#\{false\}/)
+          @q.push [:FALSE, s.matched]
+        elsif s.scan(/[a-zA-Z_][0-9a-zA-Z_]*/)
+          @q.push [:IDENT, s.matched]
+        elsif s.scan(/\d+/)
+          @q.push [:NUMBER, s.matched.to_i]
+        else
+          c = s.getch
+          @q.push [c, c]
         end
-        line = $'
       end
     }
     @q.push [false, '$end']
