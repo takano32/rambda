@@ -1,20 +1,14 @@
 #!/usr/bin/env ruby
-require 'test/unit'
-require_relative 'lambda'
-require 'stringio'
+require_relative 'test_helper'
 require 'tempfile'
-require 'rbconfig'
 
+# the revised rules of tree.rb, reduced step by step as lambda.rb does by default
 class TestLambdaExpressionParser < Test::Unit::TestCase
+  include LambdaTestHelper
   LIMIT = 100000
-  LAMBDA_RB = File.join(__dir__, 'lambda.rb')
 
   def setup
     @parser = LambdaExpressionParser.new
-  end
-
-  def parse(src)
-    return @parser.parse(StringIO.new(src))
   end
 
   # reduce src to its normal form, recording [rule, redex, result, term] of each step
@@ -34,31 +28,9 @@ class TestLambdaExpressionParser < Test::Unit::TestCase
     return reduce(src).to_s
   end
 
-  # bound variables as de Bruijn indices, for comparison up to alpha
-  def debruijn(node, env = [])
-    case node
-    when AbstractionNode
-      "&.#{debruijn(node.expr, [node.var.to_s] + env)}"
-    when ApplicationNode
-      "(#{debruijn(node.expr1, env)})#{debruijn(node.expr2, env)}"
-    when VariableNode
-      i = env.index(node.to_s)
-      i ? "##{i}" : node.to_s
-    else
-      node.to_s
-    end
-  end
-
+  # the normal form of src is alpha-equivalent to expected
   def assert_alpha_equal(expected, src)
-    assert_equal(debruijn(parse(expected)), debruijn(reduce(src)), "#{src} ->")
-  end
-
-  def run_lambda(*args, input: nil)
-    IO.popen([RbConfig.ruby, LAMBDA_RB, *args], 'r+', :err => [:child, :out]) {|io|
-      io.write(input) if input
-      io.close_write
-      io.read
-    }
+    super(expected, reduce(src), "#{src} ->")
   end
 
   def test_variables

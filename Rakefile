@@ -18,7 +18,7 @@ desc "generate #{PARSER} from lambda.y"
 task :parser => PARSER
 
 Rake::TestTask.new(:test) do |t|
-  t.test_files = ['test_beta2.rb']
+  t.test_files = %w[test_beta2.rb test_reducer.rb]
 end
 task :test => PARSER
 
