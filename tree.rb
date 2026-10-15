@@ -1,15 +1,30 @@
 # Lambda Expression Tree
 class LambdaExpressionNode
-  # todo: implements variables method
+  # mark: nil, true (pending redex: reduce before anything else)
+  # or the name of the rule chosen by mark_first_redex
+  attr_accessor :mark
+
   def initialize
-    @mark = false
+    @mark = nil
   end
-    
-  def mark_first_redex(canonical = false)
+
+  # mark the redex to reduce next: a pending one if any,
+  # otherwise the leftmost-outermost redex
+  def mark_first_redex
+    return true if marked?
+    return mark_redex
+  end
+
+  def mark_redex
     return false
   end
 
-  def reduce(e = [], q = [])
+  def marked?
+    return false
+  end
+
+  # returns [node, rule, redex, result] or nil when nothing was reduced
+  def reduce
     return nil
   end
 
@@ -17,9 +32,19 @@ class LambdaExpressionNode
     method = self.method("beta#{i}".intern)
     return method.call
   end
-  
+
+  # free variables
   def variables(binding = [])
     return []
+  end
+
+  # all variables, bound or free
+  def all_variables
+    return []
+  end
+
+  def copy
+    return self
   end
 end
 
@@ -27,6 +52,7 @@ end
 
 class VariableNode < LambdaExpressionNode
   def initialize(var)
+    super()
     @var = var
   end
 
@@ -36,11 +62,27 @@ class VariableNode < LambdaExpressionNode
     else
       return [self]
     end
-  end  
+  end
+
+  def all_variables
+    return [self]
+  end
+
+  def copy
+    return VariableNode.new(@var)
+  end
 
   def ==(target)
     return false unless target.instance_of?(VariableNode)
     return self.to_s == target.to_s
+  end
+
+  def eql?(target)
+    return self == target
+  end
+
+  def hash
+    return @var.hash
   end
 
   def to_s
@@ -51,6 +93,7 @@ end
 class ConstantNode < LambdaExpressionNode
   attr_accessor :num
   def initialize(num)
+    super()
     @num = num
   end
 
@@ -58,8 +101,21 @@ class ConstantNode < LambdaExpressionNode
     return []
   end
 
+  def copy
+    return ConstantNode.new(@num)
+  end
+
   def ==(target)
-    self.num == target.num
+    return false unless target.instance_of?(ConstantNode)
+    return self.num == target.num
+  end
+
+  def eql?(target)
+    return self == target
+  end
+
+  def hash
+    return @num.hash
   end
 
   def to_s
@@ -68,57 +124,60 @@ class ConstantNode < LambdaExpressionNode
 end
 
 class ApplicationNode < LambdaExpressionNode
-  attr_accessor :expr1, :expr2, :mark
+  attr_accessor :expr1, :expr2
   def initialize(expr1, expr2)
+    super()
     @expr1 = expr1
     @expr2 = expr2
   end
-  
-  def mark_first_redex(canonical = false)
-    for i in 1..5 do
-      method = self.method("beta#{i}?".intern)
-      @mark = "beta#{i}" if method.call
-      return true if @mark
+
+  RULES = %w[beta1 beta2 beta3 beta4 beta5 alpha]
+
+  # name of the rule applicable to this node, or nil
+  def rule
+    for name in RULES do
+      return name if self.send("#{name}?")
     end
-
-
-    return true if (alpha? and alpha)
-    
-    mark1 = @expr1.mark_first_redex(canonical)
-    return true if mark1
-    mark2 = @expr2.mark_first_redex(canonical)
-    return true if mark2
-    return false
+    return nil
   end
 
-  def reduce(e = [], q = [])
+  def mark_redex
+    @mark = rule
+    return true if @mark
+    return @expr1.mark_redex || @expr2.mark_redex
+  end
+
+  def marked?
+    return true if @mark
+    return @expr1.marked? || @expr2.marked?
+  end
+
+  def reduce
     if @mark then
-      return beta1 if beta1?
-      return beta2 if beta2?
-      return beta3 if beta3?
-      return beta4, true if beta4?
-      return beta5 if beta5?
+      @mark = nil
+      name = rule
+      if name == 'alpha' then
+        redex = @expr1.expr
+        alpha
+        return self, name, redex, @expr1.expr
+      elsif name then
+        node = self.send(name)
+        return node, name, self, node
+      end
     end
 
-    if @expr1.instance_of?(AbstractionNode) and
-        @expr1.expr.instance_of?(AbstractionNode) then
-      e << @expr1.expr.expr.variables
-      q << @expr2.variables
-    end
-
-    
-    node, marked = @expr1.reduce(e, q)
+    node, *step = @expr1.reduce
     if node then
       @expr1 = node
-      return self, marked
+      return self, *step
     end
-    
-    node, marked = @expr2.reduce(e, q)
+
+    node, *step = @expr2.reduce
     if node then
       @expr2 = node
-      return self, marked
+      return self, *step
     end
-    return self
+    return nil
   end
 
   def variables(binding = [])
@@ -127,8 +186,17 @@ class ApplicationNode < LambdaExpressionNode
     return first_vars + second_vars
   end
 
+  def all_variables
+    return @expr1.all_variables + @expr2.all_variables
+  end
 
-  # test alpha reduce(based on beta4?)
+  def copy
+    return ApplicationNode.new(@expr1.copy, @expr2.copy)
+  end
+
+
+  # test alpha: (&x.&y.E)Q where beta4 is blocked,
+  # i.e. x is free in E and y is free in Q
   def alpha?
     if @expr1.instance_of?(AbstractionNode) and
         @expr1.expr.instance_of?(AbstractionNode) and
@@ -140,13 +208,14 @@ class ApplicationNode < LambdaExpressionNode
     return false
   end
 
-  # mark
+  # (&x.&y.E)Q -> (&x.&z.(&y.E)z)Q, z fresh for E, Q, x and y
   def alpha
     return nil unless alpha?
-    @expr1.expr.mark = true
+    used = @expr2.all_variables + [@expr1.var]
+    @expr1.expr = @expr1.expr.alpha(used)
     return self
   end
-  
+
 
   def beta1?
     if @expr1.instance_of?(AbstractionNode) and
@@ -159,13 +228,14 @@ class ApplicationNode < LambdaExpressionNode
 
   def beta1
     return nil unless beta1?
-    return @expr2 if beta1?
+    return @expr2
   end
-  
+
   def beta2?
     if @expr1.instance_of?(AbstractionNode) and
-        @expr1.expr.instance_of?(VariableNode) and
-        @expr1.var != @expr1.expr then
+        ( @expr1.expr.instance_of?(ConstantNode) or
+          ( @expr1.expr.instance_of?(VariableNode) and
+            @expr1.var != @expr1.expr ) ) then
       return true
     end
     return false
@@ -173,7 +243,7 @@ class ApplicationNode < LambdaExpressionNode
 
   def beta2
     return nil unless beta2?
-    return @expr1.expr if beta2?
+    return @expr1.expr
   end
 
   def beta3?
@@ -222,7 +292,9 @@ class ApplicationNode < LambdaExpressionNode
     e1 = AbstractionNode.new(@expr1.var, @expr1.expr.expr1)
     e2 = AbstractionNode.new(@expr1.var, @expr1.expr.expr2)
     ee1 = ApplicationNode.new(e1, @expr2)
-    ee2 = ApplicationNode.new(e2, @expr2)
+    ee2 = ApplicationNode.new(e2, @expr2.copy)
+    ee1.mark = true
+    ee2.mark = true
     return ApplicationNode.new(ee1, ee2)
   end
 
@@ -232,58 +304,60 @@ class ApplicationNode < LambdaExpressionNode
 end
 
 class AbstractionNode < LambdaExpressionNode
-  attr_accessor :var, :expr, :mark
+  attr_accessor :var, :expr
   def initialize(var, expr)
+    super()
     @var = var
     @expr = expr
   end
 
-  def mark_first_redex(canonical = false)
-    return @expr.mark_first_redex(canonical)
+  def mark_redex
+    return @expr.mark_redex
+  end
+
+  def marked?
+    return @expr.marked?
+  end
+
+  def reduce
+    node, *step = @expr.reduce
+    if node then
+      @expr = node
+      return self, *step
+    end
+    return nil
   end
 
   def variables(binding = [])
-    binding << @var
-    return @var.variables(binding) + @expr.variables(binding)
+    return @expr.variables(binding + [@var])
   end
 
-  # e and q are bindings
-  def reduce(e = [], q = [])    
-    if @mark then
-      return alpha(e, q) if alpha?(e, q)
-    end
-
-    node, marked = @expr.reduce
-    if node then
-      @expr = node
-      return self, marked
-    end
-    return self
+  def all_variables
+    return [@var] + @expr.all_variables
   end
 
-  def alpha?(e, q)
-    var = nil
-    for z in 'a'..'z' do
-      var = VariableNode.new(z)
-      break unless e.include?(var)
-      break unless q.include?(var)
-      var = nil
-    end
-    return true if var
+  def copy
+    return AbstractionNode.new(@var.copy, @expr.copy)
   end
 
-  def alpha(e, q)
-    var = nil
-    for z in 'a'..'z' do
-      var = VariableNode.new(z)
-      break unless e.include?(var)
-      break unless q.include?(var)
-      var = nil
-    end
-    raise "No More Free Variable" unless var
-    app = ApplicationNode.new(AbstractionNode.new(@var, @expr), var)
+  # &y.E -> &z.(&y.E)z for a z not used in E, Q, ...
+  def alpha(used = [])
+    var = fresh_variable(used + all_variables)
+    app = ApplicationNode.new(self, var)
     app.mark = true
-    return AbstractionNode.new(var, app), true
+    return AbstractionNode.new(var, app)
+  end
+
+  # a, b, ..., z, a1, b1, ..., z1, a2, ...
+  def fresh_variable(used)
+    i = 0
+    loop do
+      for z in 'a'..'z' do
+        var = VariableNode.new(i == 0 ? z : "#{z}#{i}")
+        return var unless used.include?(var)
+      end
+      i += 1
+    end
   end
 
 
