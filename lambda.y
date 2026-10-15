@@ -1,10 +1,29 @@
 class BaseLambdaExpressionParser
 
+# <program> ::= <definition>* <lambda-expression>
+# <definition> ::= let <variable> = <lambda-expression> ;
 # <lambda-expression> ::= <variable> | <constant> | <application> | <abstraction>
 # <application> ::= (<lambda-expression>)<lambda-expression>
 # <abstraction> ::= &<variable>.<lambda-expression>
 
 rule
+
+# a definition names a term for the free occurrences of the variable in the
+# definitions after it and in the expression; later definitions are
+# substituted first, so the names are scoped like nested lets
+program : definitions lambda_expression
+    {
+      result = val[1]
+      @definitions.reverse_each {|name, term| result = result.substitute(name, term) }
+    }
+
+definitions :
+    | definitions definition
+
+definition : LET IDENT '=' lambda_expression ';'
+    {
+      @definitions.push [val[1], val[3]]
+    }
 
 lambda_expression : atom
     | application
@@ -115,10 +134,13 @@ require 'strscan'
 
   def parse( f )
     @q = []
+    @definitions = []
     f.each{|line|
       s = StringScanner.new(line)
       until s.eos? do
         if s.skip(/\s+/)
+        elsif s.scan(/let\b/)
+          @q.push [:LET, s.matched]
         elsif s.scan(/#\{succ\}/)
           @q.push [:SUCC, s.matched]
         elsif s.scan(/#\{pred\}/)
