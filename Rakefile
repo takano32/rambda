@@ -22,4 +22,9 @@ Rake::TestTask.new(:test) do |t|
 end
 task :test => PARSER
 
+desc 'compare the strategies on Church numeral workloads (Markdown table)'
+task :bench => PARSER do
+  ruby 'bench.rb'
+end
+
 task :default => :test

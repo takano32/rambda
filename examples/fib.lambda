@@ -1,0 +1,7 @@
+let Y = &f.(&x.(f)(x)x)&x.(f)(x)x;
+let zero = &f.&x.x;
+let one = &f.&x.(f)x;
+let five = &f.&x.(f)(f)(f)(f)(f)x;
+let ten = ((+)five)five;
+let fib = (Y)&g.&n.(((#{zero})n)zero)(((#{zero})(#{pred})n)one)((+)(g)(#{pred})n)(g)(#{pred})(#{pred})n;
+(fib)ten
