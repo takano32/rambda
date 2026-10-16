@@ -76,6 +76,44 @@ class TestReducer < Test::Unit::TestCase
     assert_alpha_equal(church(55), normal_form(PRELUDE + '(fib)ten', 'need'))
   end
 
+  # every built-in, by the Church numeral or boolean of its result
+  BUILTINS = {
+    '#{0}' => '0 (false)', '#{3}' => '3',
+    '((#{exp})#{2})#{3}' => '8', '((#{sub})#{5})#{2}' => '3', '((#{sub})#{2})#{5}' => '0 (false)',
+    '((#{plus})#{2})#{3}' => '5', '((#{mult})#{2})#{3}' => '6', '(#{iszero})#{0}' => 'true',
+    '((#{leq})#{2})#{3}' => 'true', '((#{leq})#{3})#{2}' => '0 (false)',
+    '((#{lt})#{2})#{3}' => 'true', '((#{lt})#{3})#{3}' => '0 (false)',
+    '((#{eq})#{3})#{3}' => 'true', '((#{eq})#{3})#{2}' => '0 (false)',
+    '(#{not})#{true}' => '0 (false)', '((#{and})#{true})#{false}' => '0 (false)',
+    '((#{or})#{false})#{true}' => 'true', '((#{xor})#{true})#{true}' => '0 (false)',
+    '((#{xor})#{true})#{false}' => 'true', '(((#{if})#{true})#{1})#{2}' => '1',
+    '(#{fst})((#{pair})#{1})#{2}' => '1', '(#{snd})((#{pair})#{1})#{2}' => '2',
+    '(#{head})(#{tail})((#{cons})#{1})((#{cons})#{2})#{nil}' => '2',
+    '(#{null})#{nil}' => 'true', '(#{null})((#{cons})#{1})#{nil}' => '0 (false)',
+    '(#{I})#{7}' => '7', '(((#{S})#{K})#{K})#{4}' => '4', '(((#{B})#{succ})#{succ})#{1}' => '3',
+    '(((#{C})#{sub})#{1})#{4}' => '3', '((#{W})#{plus})#{3}' => '6',
+  }
+  FIX = {
+    '((#{Y})&g.&n.(((#{zero})n)#{1})((*)n)(g)(#{pred})n)#{4}' => '24',
+    '((#{Z})&g.&n.((((#{zero})n)&d.#{1})&d.((*)n)(g)(#{pred})n)#{I})#{4}' => '24',
+  }
+
+  def test_builtins
+    MODES.each_key {|mode|
+      BUILTINS.each {|src, expected|
+        assert_equal(expected, Reducer.church(normal_form(src, mode)), "#{src} (#{mode})")
+      }
+    }
+    %w[normal need].each {|mode|
+      FIX.each {|src, expected|
+        assert_equal(expected, Reducer.church(normal_form(src, mode)), "#{src} (#{mode})")
+      }
+    }
+    assert_alpha_equal('(&x.(x)x)&x.(x)x', '#{Omega}')
+    assert_raise(Reducer::Cycle) { normal_form('#{Omega}') }
+    assert_raise(Racc::ParseError) { parse('#{foo}') }
+  end
+
   def test_booleans
     MODES.each_key {|mode|
       assert_equal('true', Reducer.church(normal_form('(#{zero})&f.&x.x', mode)), mode)

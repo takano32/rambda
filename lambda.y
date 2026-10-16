@@ -5,6 +5,7 @@ class BaseLambdaExpressionParser
 # <lambda-expression> ::= <variable> | <constant> | <application> | <abstraction>
 # <application> ::= (<lambda-expression>)<lambda-expression>
 # <abstraction> ::= &<variable>.<lambda-expression>
+# <builtin> ::= #{<name>} | #{<number>}, see BUILTINS
 
 rule
 
@@ -62,55 +63,25 @@ variable : IDENT
 		result = VariableNode.new(val[0])
     }
 
-constant : number | operator | combinator
+constant : number | operator | builtin
 
 number : NUMBER
     {
       result = ConstantNode.new(val[0])
     }
 
-operator : arithmetic_operator | predicate
-
-arithmetic_operator : plus | mult | succ | pred
-
-plus : '+'
+operator : '+'
     {
-		result = parse_parse('&m.&n.&f.&x.((m)f)((n)f)x')
+      result = expand('plus')
+    }
+    | '*'
+    {
+      result = expand('mult')
     }
 
-mult : '*'
+builtin : BUILTIN
     {
-		result = parse_parse('&m.&n.&f.(m)(n)f')
-    }
-
-succ : SUCC
-    {
-		result = parse_parse('&n.&f.&x.(f)((n)f)x')
-    }
-
-# pred n = snd (n (&p.pair (succ (fst p)) (fst p)) (pair 0 0))
-#   pair a b = &z.((z)a)b, fst p = (p)true, snd p = (p)false, 0 = &f.&x.x
-pred : PRED
-    {
-		result = parse_parse('&n.(((n)&p.&z.((z)(#{succ})(p)#{true})(p)#{true})&z.((z)&f.&x.x)&f.&x.x)#{false}')
-    }
-
-# zero n = (n (&x.false)) true, where (true)false = &y.false
-predicate : ZERO
-    {
-		result = parse_parse('&n.((n)(#{true})#{false})#{true}')
-    }
-
-combinator : true | false
-
-true : TRUE
-    {
-		result = parse_parse('&x.&y.x')
-    }
-
-false : FALSE
-    {
-		result = parse_parse('&x.&y.y')
+      result = expand(val[0])
     }
 
 abstraction : lambda variable '.' lambda_expression
@@ -141,16 +112,8 @@ require 'strscan'
         if s.skip(/\s+/)
         elsif s.scan(/let\b/)
           @q.push [:LET, s.matched]
-        elsif s.scan(/#\{succ\}/)
-          @q.push [:SUCC, s.matched]
-        elsif s.scan(/#\{pred\}/)
-          @q.push [:PRED, s.matched]
-        elsif s.scan(/#\{zero\}/)
-          @q.push [:ZERO, s.matched]
-        elsif s.scan(/#\{true\}/)
-          @q.push [:TRUE, s.matched]
-        elsif s.scan(/#\{false\}/)
-          @q.push [:FALSE, s.matched]
+        elsif s.scan(/#\{(\w+)\}/)
+          @q.push [:BUILTIN, s[1]]
         elsif s.scan(/[a-zA-Z_][0-9a-zA-Z_]*/)
           @q.push [:IDENT, s.matched]
         elsif s.scan(/\d+/)
@@ -163,6 +126,60 @@ require 'strscan'
     }
     @q.push [false, '$end']
     do_parse
+  end
+
+  # Church encodings; a definition may use the built-ins defined before it
+  BUILTINS = {
+    # combinators
+    'I' => '&x.x',
+    'K' => '&x.&y.x',
+    'S' => '&x.&y.&z.((x)z)(y)z',
+    'B' => '&x.&y.&z.(x)(y)z',
+    'C' => '&x.&y.&z.((x)z)y',
+    'W' => '&x.&y.((x)y)y',
+    'omega' => '&x.(x)x',
+    'Omega' => '(#{omega})#{omega}',
+    'Y' => '&f.(&x.(f)(x)x)&x.(f)(x)x',
+    'Z' => '&f.(&x.(f)&v.((x)x)v)&x.(f)&v.((x)x)v',
+    # booleans
+    'true' => '&x.&y.x',
+    'false' => '&x.&y.y',
+    'if' => '&p.&a.&b.((p)a)b',
+    'not' => '&p.((p)#{false})#{true}',
+    'and' => '&p.&q.((p)q)p',
+    'or' => '&p.&q.((p)p)q',
+    'xor' => '&p.&q.((p)(#{not})q)q',
+    # pairs: pair a b = &z.((z)a)b
+    'pair' => '&a.&b.&z.((z)a)b',
+    'fst' => '&p.(p)#{true}',
+    'snd' => '&p.(p)#{false}',
+    # numerals: #{0}, #{1}, ... are the Church numerals
+    'succ' => '&n.&f.&x.(f)((n)f)x',
+    # pred n = snd (n (&p.pair (succ (fst p)) (fst p)) (pair 0 0))
+    'pred' => '&n.(((n)&p.&z.((z)(#{succ})(p)#{true})(p)#{true})&z.((z)#{0})#{0})#{false}',
+    'plus' => '&m.&n.&f.&x.((m)f)((n)f)x',
+    'mult' => '&m.&n.&f.(m)(n)f',
+    'exp' => '&m.&n.(n)m',
+    'sub' => '&m.&n.((n)#{pred})m',
+    # zero n = (n (&x.false)) true, where (true)false = &y.false
+    'zero' => '&n.((n)(#{true})#{false})#{true}',
+    'leq' => '&m.&n.(#{zero})((#{sub})m)n',
+    'eq' => '&m.&n.((#{and})((#{leq})m)n)((#{leq})n)m',
+    'lt' => '&m.&n.(#{not})((#{leq})n)m',
+    # lists: nil = pair true true, cons h t = pair false (pair h t)
+    'nil' => '&z.((z)#{true})#{true}',
+    'cons' => '&h.&t.&z.((z)#{false})&w.((w)h)t',
+    'null' => '#{fst}',
+    'head' => '&l.(#{fst})(#{snd})l',
+    'tail' => '&l.(#{snd})(#{snd})l',
+  }
+  BUILTINS['iszero'] = BUILTINS['zero']
+
+  def expand(name)
+    return parse_parse('&f.&x.' + '(f)' * name.to_i + 'x') if name =~ /\A\d+\z/
+    src = BUILTINS[name]
+    raise Racc::ParseError, "unknown built-in \#{#{name}}" unless src
+    return parse_parse(src)
   end
 
   def next_token
