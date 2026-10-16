@@ -12,6 +12,10 @@ Rubyで記述した型なしラムダ計算を行う簡約機です。
 どの戦略も正規化的 (正規形があれば必ずそれに到達する) で、
 正規形がない項は循環の検出とステップ数の上限で止まります。
 
+ラムダ式は教科書の標準的な記法で書きます:
+抽象は `λx. M` (`\x. M` でも可、`λx y. M` は `λx. λy. M`)、適用は並置で左結合 (`f x y` は `(f x) y`)、
+括弧はグループ化のためだけに使います。
+
 ## 必要なもの
 
 - Ruby 2.0 以降 (Ruby 3.3 で動作確認)
@@ -36,19 +40,19 @@ Rubyで記述した型なしラムダ計算を行う簡約機です。
 
 標準入力からラムダ式を読み込み、簡約の各ステップを 1 行ずつ表示します。
 
-    $ echo '(&x.&y.x)y' | ruby lambda.rb
+    $ echo '(λx y. x) y' | ruby lambda.rb
 
     ---- reduce ----
-    (&x.&y.x)y
-    (&x.&a.(&y.x)a)y
-    (&x.&a.x)y
-    &a.(&x.x)y
-    &a.y
+    (λx y. x) y
+    (λx a. (λy. x) a) y
+    (λx a. x) y
+    λa. (λx. x) y
+    λa. y
 
 ファイル名を引数に指定すると、そのファイルから読み込みます
 (出力は標準入力の場合と同じです)。
 
-    $ echo '(&x.&y.x)y' > expr.txt
+    $ echo '(λx y. x) y' > expr.txt
     $ ruby lambda.rb expr.txt
 
 正規形に到達すると終了ステータスは 0、正規形が見つからなかったときは 1 です。
@@ -57,18 +61,18 @@ Rubyで記述した型なしラムダ計算を行う簡約機です。
 
 各ステップで適用した規則と、簡約基 (redex) とその簡約結果を表示します。
 
-    $ echo '(&x.&y.x)y' | ruby lambda.rb -v
+    $ echo '(λx y. x) y' | ruby lambda.rb -v
 
     ---- reduce ----
-    (&x.&y.x)y
-      alpha: &y.x -> &a.(&y.x)a
-    (&x.&a.(&y.x)a)y
-      beta2: (&y.x)a -> x
-    (&x.&a.x)y
-      beta4: (&x.&a.x)y -> &a.(&x.x)y
-    &a.(&x.x)y
-      beta1: (&x.x)y -> y
-    &a.y
+    (λx y. x) y
+      alpha: λy. x -> λa. (λy. x) a
+    (λx a. (λy. x) a) y
+      beta2: (λy. x) a -> x
+    (λx a. x) y
+      beta4: (λx a. x) y -> λa. (λx. x) y
+    λa. (λx. x) y
+      beta1: (λx. x) y -> y
+    λa. y
 
 ### 簡約戦略の選択 (-s, --strategy)
 
@@ -81,117 +85,117 @@ Rubyで記述した型なしラムダ計算を行う簡約機です。
 `normal` は古典的な最左最外 (normal order) 簡約です。
 代入 `E[x:=Q]` は捕獲を避けて一度に行い、束縛変数の改名は表示しません。
 
-    $ echo '((*)&f.&x.(f)(f)x)&f.&x.(f)(f)(f)x' | ruby lambda.rb -s normal -v
+    $ echo '* (λf x. f (f x)) (λf x. f (f (f x)))' | ruby lambda.rb -s normal -v
 
     ---- reduce ----
-    ((&m.&n.&f.(m)(n)f)&f.&x.(f)(f)x)&f.&x.(f)(f)(f)x
-      beta: (&m.&n.&f.(m)(n)f)&f.&x.(f)(f)x -> &n.&f.(&f.&x.(f)(f)x)(n)f
-    (&n.&f.(&f.&x.(f)(f)x)(n)f)&f.&x.(f)(f)(f)x
-      beta: (&n.&f.(&f.&x.(f)(f)x)(n)f)&f.&x.(f)(f)(f)x -> &f.(&f.&x.(f)(f)x)(&f.&x.(f)(f)(f)x)f
-    &f.(&f.&x.(f)(f)x)(&f.&x.(f)(f)(f)x)f
-      beta: (&f.&x.(f)(f)x)(&f.&x.(f)(f)(f)x)f -> &x.((&f.&x.(f)(f)(f)x)f)((&f.&x.(f)(f)(f)x)f)x
-    &f.&x.((&f.&x.(f)(f)(f)x)f)((&f.&x.(f)(f)(f)x)f)x
-      beta: (&f.&x.(f)(f)(f)x)f -> &x.(f)(f)(f)x
-    &f.&x.(&x.(f)(f)(f)x)((&f.&x.(f)(f)(f)x)f)x
-      beta: (&x.(f)(f)(f)x)((&f.&x.(f)(f)(f)x)f)x -> (f)(f)(f)((&f.&x.(f)(f)(f)x)f)x
-    &f.&x.(f)(f)(f)((&f.&x.(f)(f)(f)x)f)x
-      beta: (&f.&x.(f)(f)(f)x)f -> &x.(f)(f)(f)x
-    &f.&x.(f)(f)(f)(&x.(f)(f)(f)x)x
-      beta: (&x.(f)(f)(f)x)x -> (f)(f)(f)x
-    &f.&x.(f)(f)(f)(f)(f)(f)x
+    (λm n f. m (n f)) (λf x. f (f x)) (λf x. f (f (f x)))
+      beta: (λm n f. m (n f)) (λf x. f (f x)) -> λn f. (λf x. f (f x)) (n f)
+    (λn f. (λf x. f (f x)) (n f)) (λf x. f (f (f x)))
+      beta: (λn f. (λf x. f (f x)) (n f)) (λf x. f (f (f x))) -> λf. (λf x. f (f x)) ((λf x. f (f (f x))) f)
+    λf. (λf x. f (f x)) ((λf x. f (f (f x))) f)
+      beta: (λf x. f (f x)) ((λf x. f (f (f x))) f) -> λx. (λf x. f (f (f x))) f ((λf x. f (f (f x))) f x)
+    λf x. (λf x. f (f (f x))) f ((λf x. f (f (f x))) f x)
+      beta: (λf x. f (f (f x))) f -> λx. f (f (f x))
+    λf x. (λx. f (f (f x))) ((λf x. f (f (f x))) f x)
+      beta: (λx. f (f (f x))) ((λf x. f (f (f x))) f x) -> f (f (f ((λf x. f (f (f x))) f x)))
+    λf x. f (f (f ((λf x. f (f (f x))) f x)))
+      beta: (λf x. f (f (f x))) f -> λx. f (f (f x))
+    λf x. f (f (f ((λx. f (f (f x))) x)))
+      beta: (λx. f (f (f x))) x -> f (f (f x))
+    λf x. f (f (f (f (f (f x)))))
 
 `need` は strong call-by-need です。引数は thunk として共有され、
 最初に必要になったときに 1 度だけ評価されます
-(上の例で `(&f.&x.(f)(f)(f)x)f` が 2 回簡約されているところが 1 回になります)。
+(上の例で `(λf x. f (f (f x))) f` が 2 回簡約されているところが 1 回になります)。
 途中の項は作らないので、最初の項と正規形だけを表示します。
 
-    $ echo '((*)&f.&x.(f)(f)x)&f.&x.(f)(f)(f)x' | ruby lambda.rb -s need -c --stats
+    $ echo '* (λf x. f (f x)) (λf x. f (f (f x)))' | ruby lambda.rb -s need -c --stats
 
     ---- reduce ----
-    ((&m.&n.&f.(m)(n)f)&f.&x.(f)(f)x)&f.&x.(f)(f)(f)x
-    &f.&x.(f)(f)(f)(f)(f)(f)x
+    (λm n f. m (n f)) (λf x. f (f x)) (λf x. f (f (f x)))
+    λf x. f (f (f (f (f (f x)))))
       = 6
       steps: 6  beta: 6  time: 0.000s
 
 ### ガベージコレクション規則 (-g, --gc)
 
-既定の `revised` 戦略に、x が E に自由に出現しないときに `(&x.E)Q` を一歩で `E` にする
+既定の `revised` 戦略に、x が E に自由に出現しないときに `(λx. E) Q` を一歩で `E` にする
 規則 `gc` を加えます (beta2, beta3 を一般化したもので、明示的代入の計算系 λxgc の gc 規則)。
 beta5 で Q を E の隅々まで複製してから捨てる手間が省けるので、
 ステップ数が数分の一になります (後述のベンチマーク参照)。
 適用順は beta1, beta2, beta3, gc, beta4, beta5, alpha で、
 beta2, beta3 が適用できる簡約基の表示は変わりません。
 
-    $ echo '(&x.(y)z)w' | ruby lambda.rb -g -v
+    $ echo '(λx. y z) w' | ruby lambda.rb -g -v
 
     ---- reduce ----
-    (&x.(y)z)w
-      gc: (&x.(y)z)w -> (y)z
-    (y)z
+    (λx. y z) w
+      gc: (λx. y z) w -> y z
+    y z
 
 ### 正規形がないとき: 循環の検出とステップ数の上限 (-l, --limit)
 
 `revised` と `normal` では、β 簡約のたびに項を de Bruijn 表現に直して
 以前の項と比べ (Brent の循環検出法、メモリは O(1))、
 項が α 同値の範囲で繰り返したら「正規形なし」として止まります。
-Ω = `(&x.(x)x)&x.(x)x` はこれで止まります。
+Ω = `(λx. x x) (λx. x x)` はこれで止まります。
 
     $ ruby lambda.rb examples/omega.lambda
 
     ---- reduce ----
-    (&x.(x)x)&x.(x)x
-    ((&x.x)&x.(x)x)(&x.x)&x.(x)x
-    (&x.(x)x)(&x.x)&x.(x)x
-    (&x.(x)x)&x.(x)x
+    (λx. x x) (λx. x x)
+    (λx. x) (λx. x x) ((λx. x) (λx. x x))
+    (λx. x x) ((λx. x) (λx. x x))
+    (λx. x x) (λx. x x)
     no normal form: the term repeats itself (cycle detected at step 3)
 
     $ ruby lambda.rb -s normal examples/omega.lambda
 
     ---- reduce ----
-    (&x.(x)x)&x.(x)x
-    (&x.(x)x)&x.(x)x
+    (λx. x x) (λx. x x)
+    (λx. x x) (λx. x x)
     no normal form: the term repeats itself (cycle detected at step 1)
 
-項が繰り返さずに大きくなり続ける場合 (`(Y)f` など) と、途中の項を持たない `need` では、
+項が繰り返さずに大きくなり続ける場合 (`Y f` など) と、途中の項を持たない `need` では、
 ステップ数の上限 (既定 1000000) で止まります。
 `-l N` で上限を変え、`-l 0` で上限をなくせます。
 
     $ ruby lambda.rb -s need -l 1000 examples/omega.lambda
 
     ---- reduce ----
-    (&x.(x)x)&x.(x)x
+    (λx. x x) (λx. x x)
     no normal form within 1000 steps (-l raises the limit, -l 0 removes it)
 
 どの戦略も最左最外の簡約基から簡約するので、正規形のない部分項が使われなければ
 正規形に到達します。
 
-    $ echo '(&x.y)(&x.(x)x)&x.(x)x' | ruby lambda.rb -q
+    $ echo '(λx. y) ((λx. x x) (λx. x x))' | ruby lambda.rb -q
     y
 
 ### η 簡約 (-e, --eta)
 
-β 正規形に到達したあと、x が E に自由に出現しない `&x.(E)x` を `E` に簡約します
+β 正規形に到達したあと、x が E に自由に出現しない `λx. E x` を `E` に簡約します
 (η 簡約は β 簡約のあとに回せるので、β 正規形の η 正規形が βη 正規形です)。
 
-    $ echo '&x.&y.((f)x)y' | ruby lambda.rb -e -v
+    $ echo 'λx y. f x y' | ruby lambda.rb -e -v
 
     ---- reduce ----
-    &x.&y.((f)x)y
-      eta: &y.((f)x)y -> (f)x
-    &x.(f)x
-      eta: &x.(f)x -> f
+    λx y. f x y
+      eta: λy. f x y -> f x
+    λx. f x
+      eta: λx. f x -> f
     f
 
 ### チャーチ数・真偽値の表示 (-c, --church)
 
-正規形がチャーチ数 `&f.&x.(f)...(f)x` か真偽値 `&x.&y.x`, `&x.&y.y` なら、
+正規形がチャーチ数 `λf x. f (f ... (f x))` か真偽値 `λx y. x`, `λx y. y` なら、
 その値を続けて表示します (0 と false は同じ項です)。
 
-    $ echo '(#{zero})&f.&x.x' | ruby lambda.rb -q -c
-    &x.&y.x
+    $ echo '#{zero} (λf x. x)' | ruby lambda.rb -q -c
+    λx y. x
       = true
-    $ echo '(#{zero})&f.&x.(f)x' | ruby lambda.rb -q -c
-    &x.&y.y
+    $ echo '#{zero} (λf x. f x)' | ruby lambda.rb -q -c
+    λx y. y
       = 0 (false)
 
 ### 正規形だけを表示 (-q, --quiet)、統計 (--stats)
@@ -200,20 +204,27 @@ beta2, beta3 が適用できる簡約基の表示は変わりません。
 `--stats` は最後にステップ数 (`revised` では規則ごとの内訳も)、
 β 簡約の回数、所要時間を表示します。
 
-    $ echo '(&x.&y.x)y' | ruby lambda.rb --stats
+    $ echo '(λx y. x) y' | ruby lambda.rb --stats
 
     ---- reduce ----
-    (&x.&y.x)y
-    (&x.&a.(&y.x)a)y
-    (&x.&a.x)y
-    &a.(&x.x)y
-    &a.y
+    (λx y. x) y
+    (λx a. (λy. x) a) y
+    (λx a. x) y
+    λa. (λx. x) y
+    λa. y
       steps: 4 (alpha 1, beta2 1, beta4 1, beta1 1)  beta: 1  time: 0.000s
 
     $ ruby lambda.rb -s need -q -c --stats examples/fact.lambda
-    &f.&x.(f)(f)(f)...(f)x
+    λf x. f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (  (120 個の f、以下略)
       = 120
-      steps: 1164  beta: 1164  time: 0.007s
+      steps: 1164  beta: 1164  time: 0.003s
+
+### ASCII 表示 (--ascii)
+
+`λ` の代わりに `\` を表示します (入力はどちらでも構いません)。
+
+    $ echo '(\x y. x) y' | ruby lambda.rb -q --ascii
+    \a. y
 
 ### 深い項
 
@@ -222,7 +233,8 @@ beta2, beta3 が適用できる簡約基の表示は変わりません。
 (環境変数 `RUBY_THREAD_VM_STACK_SIZE` が設定済みならそのまま使います。
 メモリは実際に使った分しか消費しません)。
 項の表示、チャーチ数の判定、自由変数の計算、`need` の読み戻しは
-右側の連鎖を再帰なしでたどり、構文解析も項の深さに対して線形なので、
+右側の連鎖を再帰なしでたどり、構文解析も項の深さに対して線形なので
+(10 万のチャーチ数 `λf x. f (f (... (f x)))` の解析は 1 秒ほど)、
 `-s need` なら 10 万のチャーチ数の succ も数秒で終わります。
 それでもスタックが足りないときはメッセージを出して終了します。
 
@@ -230,11 +242,14 @@ beta2, beta3 が適用できる簡約基の表示は変わりません。
 
 racc の構文解析トレースを標準エラー出力に表示します。
 
-    $ echo '(&x.x)y' | ruby lambda.rb -d
-    read    "("("(") "("
+    $ echo '(λx. x) y' | ruby lambda.rb -d
+    reduce  <none> --> definitions
+            [ (definitions nil) ]
 
-    shift   "("
-            [ ("(" "(") ]
+    goto    2
+            [ 0 2 ]
+
+    read    "("("(") "("
     ...
 
 ### オプション一覧
@@ -242,32 +257,45 @@ racc の構文解析トレースを標準エラー出力に表示します。
     $ ruby lambda.rb -h
     Usage: lambda.rb [options] [file]
         -s, --strategy NAME              reduction strategy: revised, normal, need (default: revised)
-        -g, --gc                         revised: add the rule gc (&x.E)Q -> E for x not free in E
+        -g, --gc                         revised: add the rule gc (λx. E) Q -> E for x not free in E
         -l, --limit N                    give up after N steps (default: 1000000, 0: no limit)
-        -e, --eta                        eta-reduce the normal form: &x.(E)x -> E for x not free in E
+        -e, --eta                        eta-reduce the normal form: λx. E x -> E for x not free in E
         -c, --church                     annotate the normal form when it is a Church numeral or boolean
         -q, --quiet                      print only the normal form
+            --ascii                      print \ instead of λ
             --stats                      print the number of steps and the time taken
         -v, --verbose                    show the rule and the redex of each step
         -d, --debug                      show the racc parser trace
 
 ## 構文
 
-    <program> ::= <definition>* <lambda-expression>
-    <definition> ::= let <variable> = <lambda-expression> ;
-    <lambda-expression> ::= <variable> | <constant> | <application> | <abstraction>
-    <application> ::= (<lambda-expression>)<lambda-expression>
-    <abstraction> ::= &<variable>.<lambda-expression>
+    <program> ::= <definition>* <term>
+    <definition> ::= let <variable> = <term> ;
+    <term> ::= <application> | <application> <abstraction> | <abstraction>
+    <abstraction> ::= λ <variable>+ . <term>
+    <application> ::= <atom> | <application> <atom>
+    <atom> ::= <variable> | <constant> | ( <term> )
+    <constant> ::= <number> | + | * | <builtin>
     <builtin> ::= #{<name>} | #{<number>}
 
 | 種類 | 書き方 | 例 |
 | --- | --- | --- |
-| 変数 | 英字または `_` で始まる英数字と `_` の列 (`let` を除く) | `x`, `E1`, `foo_bar` |
-| 定数 | 数値リテラル。簡約されない定数として扱われる (`(&x.3)y` は `3` になる) | `3` |
-| 適用 | `(E1)E2`。`(f)(g)x` は `f` を `(g)x` に適用する | `(f)x` |
-| 抽象 | `&x.E` または `\x.E` | `&x.(f)x`, `\x.x` |
+| 変数 | 英字または `_` で始まる英数字と `_` の列に `'` を 0 個以上続けたもの (`let` を除く) | `x`, `E1`, `foo_bar`, `x'` |
+| 定数 | 数値リテラル。簡約されない定数として扱われる (`(λx. 3) y` は `3` になる) | `3` |
+| 適用 | 並置。左結合で、抽象より強く結合する (`f x y` は `(f x) y`、`f (g x)` は `g x` に `f` を適用) | `f x` |
+| 抽象 | `λx. M` または `\x. M`。`λx y z. M` は `λx. λy. λz. M` の略記。本体は右へできるだけ延びる (`λx. f x y` は `λx. (f x y)`) | `λx. f x`, `\x. x` |
 
-空白と改行は無視されます。
+- 括弧はグループ化のためだけに使います (`(f x) y` と `f x y` は同じ項)。
+- 抽象を引数にするときは括弧で囲みます (`f (λx. x) y`)。
+  最後の引数のときだけ括弧を省けます (`f λx. x y` は `f (λx. x y)`)。
+- `let` は予約語で、変数名には使えません (`lets`, `let_x`, `let'` は変数です)。
+- 空白と改行は無視されます。入力はロケールによらず UTF-8 として読みます。
+- 2026-10-16 までの旧記法 (`&x.M`, `(M)N`) は受け付けません。
+  経緯と対応表は [doc/notation.md](doc/notation.md) を参照してください。
+
+項は括弧を最小限にして表示します。連続する抽象はまとめ (`λf x. f (f x)`)、
+適用される抽象と引数になる抽象・適用を括弧で囲みます (`(λx. x x) (λx. x x)`, `f (g x) y`)。
+表示を読み直すと同じ項になります。
 
 ### 定義 (let)
 
@@ -276,11 +304,11 @@ racc の構文解析トレースを標準エラー出力に表示します。
 (束縛変数は置き換えず、置き換えで変数が捕獲されることもありません)。
 後の定義ほど先に置き換えるので、入れ子の let と同じスコープになります。
 
-    $ printf 'let two = &f.&x.(f)(f)x;\n((+)two)two\n' | ruby lambda.rb -s need -c
+    $ printf 'let two = λf x. f (f x);\n+ two two\n' | ruby lambda.rb -s need -c
 
     ---- reduce ----
-    ((&m.&n.&f.&x.((m)f)((n)f)x)&f.&x.(f)(f)x)&f.&x.(f)(f)x
-    &f.&x.(f)(f)(f)(f)x
+    (λm n f x. m f (n f x)) (λf x. f (f x)) (λf x. f (f x))
+    λf x. f (f (f (f x)))
       = 4
 
 ### 組み込み
@@ -294,44 +322,44 @@ racc の構文解析トレースを標準エラー出力に表示します。
 
 | 記法 | 展開 | 備考 |
 | --- | --- | --- |
-| `#{I}` | `&x.x` | 恒等関数 |
-| `#{K}` | `&x.&y.x` | |
-| `#{S}` | `&x.&y.&z.((x)z)(y)z` | |
-| `#{B}` | `&x.&y.&z.(x)(y)z` | 関数合成 |
-| `#{C}` | `&x.&y.&z.((x)z)y` | 引数の入れ替え |
-| `#{W}` | `&x.&y.((x)y)y` | 引数の複製 |
-| `#{omega}` | `&x.(x)x` | |
-| `#{Omega}` | `(#{omega})#{omega}` | 正規形を持たない (循環を検出して停止) |
-| `#{Y}` | `&f.(&x.(f)(x)x)&x.(f)(x)x` | 不動点コンビネータ (正規順序向け) |
-| `#{Z}` | `&f.(&x.(f)&v.((x)x)v)&x.(f)&v.((x)x)v` | η 展開した不動点コンビネータ |
+| `#{I}` | `λx. x` | 恒等関数 |
+| `#{K}` | `λx y. x` | |
+| `#{S}` | `λx y z. x z (y z)` | |
+| `#{B}` | `λx y z. x (y z)` | 関数合成 |
+| `#{C}` | `λx y z. x z y` | 引数の入れ替え |
+| `#{W}` | `λx y. x y y` | 引数の複製 |
+| `#{omega}` | `λx. x x` | |
+| `#{Omega}` | `#{omega} #{omega}` | 正規形を持たない (循環を検出して停止) |
+| `#{Y}` | `λf. (λx. f (x x)) (λx. f (x x))` | 不動点コンビネータ (正規順序向け) |
+| `#{Z}` | `λf. (λx. f (λv. x x v)) (λx. f (λv. x x v))` | η 展開した不動点コンビネータ |
 
 #### 真偽値
 
 | 記法 | 展開 |
 | --- | --- |
-| `#{true}` | `&x.&y.x` |
-| `#{false}` | `&x.&y.y` |
-| `#{if}` | `&p.&a.&b.((p)a)b` |
-| `#{not}` | `&p.((p)#{false})#{true}` |
-| `#{and}` | `&p.&q.((p)q)p` |
-| `#{or}` | `&p.&q.((p)p)q` |
-| `#{xor}` | `&p.&q.((p)(#{not})q)q` |
+| `#{true}` | `λx y. x` |
+| `#{false}` | `λx y. y` |
+| `#{if}` | `λp a b. p a b` |
+| `#{not}` | `λp. p #{false} #{true}` |
+| `#{and}` | `λp q. p q p` |
+| `#{or}` | `λp q. p p q` |
+| `#{xor}` | `λp q. p (#{not} q) q` |
 
 #### 数
 
 | 記法 | 展開 | 意味 |
 | --- | --- | --- |
-| `#{0}`, `#{1}`, ... | `&f.&x.x`, `&f.&x.(f)x`, ... | チャーチ数 |
-| `#{succ}` | `&n.&f.&x.(f)((n)f)x` | n + 1 |
-| `#{pred}` | `&n.(((n)&p.&z.((z)(#{succ})(p)#{true})(p)#{true})&z.((z)#{0})#{0})#{false}` | n - 1 (0 の pred は 0) |
-| `#{plus}`, `+` | `&m.&n.&f.&x.((m)f)((n)f)x` | m + n |
-| `#{mult}`, `*` | `&m.&n.&f.(m)(n)f` | m × n |
-| `#{exp}` | `&m.&n.(n)m` | m の n 乗 |
-| `#{sub}` | `&m.&n.((n)#{pred})m` | m - n (負になるときは 0) |
-| `#{zero}`, `#{iszero}` | `&n.((n)(#{true})#{false})#{true}` | n = 0 |
-| `#{leq}` | `&m.&n.(#{zero})((#{sub})m)n` | m ≤ n |
-| `#{lt}` | `&m.&n.(#{not})((#{leq})n)m` | m < n |
-| `#{eq}` | `&m.&n.((#{and})((#{leq})m)n)((#{leq})n)m` | m = n |
+| `#{0}`, `#{1}`, ... | `λf x. x`, `λf x. f x`, ... | チャーチ数 |
+| `#{succ}` | `λn f x. f (n f x)` | n + 1 |
+| `#{pred}` | `λn. n (λp z. z (#{succ} (p #{true})) (p #{true})) (λz. z #{0} #{0}) #{false}` | n - 1 (0 の pred は 0) |
+| `#{plus}`, `+` | `λm n f x. m f (n f x)` | m + n |
+| `#{mult}`, `*` | `λm n f. m (n f)` | m × n |
+| `#{exp}` | `λm n. n m` | m の n 乗 |
+| `#{sub}` | `λm n. n #{pred} m` | m - n (負になるときは 0) |
+| `#{zero}`, `#{iszero}` | `λn. n (#{true} #{false}) #{true}` | n = 0 |
+| `#{leq}` | `λm n. #{zero} (#{sub} m n)` | m ≤ n |
+| `#{lt}` | `λm n. #{not} (#{leq} n m)` | m < n |
+| `#{eq}` | `λm n. #{and} (#{leq} m n) (#{leq} n m)` | m = n |
 
 #### 組とリスト
 
@@ -339,59 +367,59 @@ racc の構文解析トレースを標準エラー出力に表示します。
 
 | 記法 | 展開 |
 | --- | --- |
-| `#{pair}` | `&a.&b.&z.((z)a)b` |
-| `#{fst}` | `&p.(p)#{true}` |
-| `#{snd}` | `&p.(p)#{false}` |
-| `#{nil}` | `&z.((z)#{true})#{true}` |
-| `#{cons}` | `&h.&t.&z.((z)#{false})&w.((w)h)t` |
+| `#{pair}` | `λa b z. z a b` |
+| `#{fst}` | `λp. p #{true}` |
+| `#{snd}` | `λp. p #{false}` |
+| `#{nil}` | `λz. z #{true} #{true}` |
+| `#{cons}` | `λh t z. z #{false} (λw. w h t)` |
 | `#{null}` | `#{fst}` (空リストか) |
-| `#{head}` | `&l.(#{fst})(#{snd})l` |
-| `#{tail}` | `&l.(#{snd})(#{snd})l` |
+| `#{head}` | `λl. #{fst} (#{snd} l)` |
+| `#{tail}` | `λl. #{snd} (#{snd} l)` |
 
 例 (`ruby lambda.rb -s need -q -c` の出力):
 
 | 入力 | 正規形 |
 | --- | --- |
-| `((+)&f.&x.(f)x)&f.&x.(f)x` (1 + 1) | `&f.&x.(f)(f)x` (2) |
-| `(#{pred})&f.&x.(f)(f)x` (pred 2) | `&f.&x.(f)x` (1) |
-| `(#{zero})&f.&x.x` (zero? 0) | `&x.&y.x` (true) |
-| `((#{exp})#{2})#{3}` (2^3) | `&x.&a.(x)(x)(x)(x)(x)(x)(x)(x)a` (8) |
-| `((#{sub})#{5})#{2}` (5 - 2) | `&f.&x.(f)(f)(f)x` (3) |
-| `((#{eq})#{3})#{3}` (3 = 3) | `&x.&y.x` (true) |
-| `(#{head})(#{tail})((#{cons})#{1})((#{cons})#{2})#{nil}` | `&f.&x.(f)(f)x` (2) |
-| `((#{Y})&g.&n.(((#{zero})n)#{1})((*)n)(g)(#{pred})n)#{4}` (4!) | 24 |
+| `+ (λf x. f x) (λf x. f x)` (1 + 1) | `λf x. f (f x)` (2) |
+| `#{pred} (λf x. f (f x))` (pred 2) | `λf x. f x` (1) |
+| `#{zero} (λf x. x)` (zero? 0) | `λx y. x` (true) |
+| `#{exp} #{2} #{3}` (2^3) | `λx a. x (x (x (x (x (x (x (x a)))))))` (8) |
+| `#{sub} #{5} #{2}` (5 - 2) | `λf x. f (f (f x))` (3) |
+| `#{eq} #{3} #{3}` (3 = 3) | `λx y. x` (true) |
+| `#{head} (#{tail} (#{cons} #{1} (#{cons} #{2} #{nil})))` | `λf x. f (f x)` (2) |
+| `#{Y} (λg n. #{zero} n #{1} (* n (g (#{pred} n)))) #{4}` (4!) | 24 |
 
 ## メモ
 
 ### the revised alpha-rule
 
-- alpha &x.E -> &z.(&x.E)z for any z /= phi(E)
+- alpha λx. E -> λz. (λx. E) z for any z /= phi(E)
 
 ### the revised beta-rules
 
-- beta1 (&x.x)Q -> Q
-- beta2 (&x.y)Q -> y
-- beta3 (&x.&x.E)Q -> &x.E
-- beta4 (&x.&y.E)Q -> &y.(&x.E)Q
-- beta5 (&x.(E1)E2)Q -> ((&x.E1)Q)(&x.E2)Q
+- beta1 (λx. x) Q -> Q
+- beta2 (λx. y) Q -> y
+- beta3 (λx. λx. E) Q -> λx. E
+- beta4 (λx. λy. E) Q -> λy. (λx. E) Q
+- beta5 (λx. E1 E2) Q -> (λx. E1) Q ((λx. E2) Q)
 
 `-g` で加わる規則:
 
-- gc (&x.E)Q -> E if x is not free in E
+- gc (λx. E) Q -> E if x is not free in E
 
 ### 簡約戦略 (revised)
 
 - 最左最外 (leftmost-outermost) の簡約基から順に簡約します。
 - beta2 は y が定数の場合にも適用します。
-- beta4 が適用できない (&x.&y.E)Q、つまり x が E に自由に出現し、
-  かつ y が Q に自由に出現する場合は、内側の &y.E に alpha を適用します。
+- beta4 が適用できない (λx. λy. E) Q、つまり x が E に自由に出現し、
+  かつ y が Q に自由に出現する場合は、内側の λy. E に alpha を適用します。
   新しい変数 z には E, Q, x, y に現れない名前を a, b, ..., z, a1, b1, ... の順に選びます。
-- alpha で生じた (&y.E)z、beta4 で生じた (&x.E)Q、beta5 で生じた (&x.E1)Q と (&x.E2)Q は、
+- alpha で生じた (λy. E) z、beta4 で生じた (λx. E) Q、beta5 で生じた (λx. E1) Q と (λx. E2) Q は、
   他の簡約基より優先して簡約します (代入を完了させてから次に進みます)。
 
 ### 正規化性 (どの戦略も正規形があればそれに到達する)
 
-- revised: 簡約は「最左最外の簡約基 (&x.E)Q を選ぶ」「その代入を beta1〜beta5 (と alpha) で
+- revised: 簡約は「最左最外の簡約基 (λx. E) Q を選ぶ」「その代入を beta1〜beta5 (と alpha) で
   完了させる」の繰り返しです。代入は E の大きさに関する帰納法で有限ステップで終わり、
   終わった時点の項は古典的な β 簡約の結果 E[x:=Q] と α 同値です
   (Révész の改訂規則は古典的な β 変換と同じ変換関係を定めます)。
@@ -418,7 +446,7 @@ racc の構文解析トレースを標準エラー出力に表示します。
 
 ### 循環の検出
 
-`revised` と `normal` は、β 簡約で得た項の列を de Bruijn 表現 (`&f.&x.(f)x` は `&.&.(#1)#0`)
+`revised` と `normal` は、β 簡約で得た項の列を de Bruijn 表現 (`λf x. f x` は `λ.λ.#1 #0`)
 にして比べます。比較には Brent の循環検出法を使うので、保存するのは 1 つの項だけで、
 周期 p の循環が m 番目の項から始まるなら 2(m + p) 程度の項を調べるまでに検出します。
 項の表現を作るコストは項の大きさに比例するので、最初の 64 回の β 簡約では毎回、
@@ -440,45 +468,45 @@ racc の構文解析トレースを標準エラー出力に表示します。
 
 ### succ
 
-    &n.&f.&x.(f)((n)f)x
+    λn f x. f (n f x)
 
-    $ echo '(#{succ})&f.&x.x' | ruby lambda.rb
+    $ echo '#{succ} (λf x. x)' | ruby lambda.rb
 
     ---- reduce ----
-    (&n.&f.&x.(f)((n)f)x)&f.&x.x
-    &f.(&n.&x.(f)((n)f)x)&f.&x.x
-    &f.&x.(&n.(f)((n)f)x)&f.&x.x
-    &f.&x.((&n.f)&f.&x.x)(&n.((n)f)x)&f.&x.x
-    &f.&x.(f)(&n.((n)f)x)&f.&x.x
-    &f.&x.(f)((&n.(n)f)&f.&x.x)(&n.x)&f.&x.x
-    &f.&x.(f)(((&n.n)&f.&x.x)(&n.f)&f.&x.x)(&n.x)&f.&x.x
-    &f.&x.(f)((&f.&x.x)(&n.f)&f.&x.x)(&n.x)&f.&x.x
-    &f.&x.(f)((&f.&x.x)f)(&n.x)&f.&x.x
-    &f.&x.(f)((&f.&x.x)f)x
-    &f.&x.(f)(&x.(&f.x)f)x
-    &f.&x.(f)(&x.x)x
-    &f.&x.(f)x
+    (λn f x. f (n f x)) (λf x. x)
+    λf. (λn x. f (n f x)) (λf x. x)
+    λf x. (λn. f (n f x)) (λf x. x)
+    λf x. (λn. f) (λf x. x) ((λn. n f x) (λf x. x))
+    λf x. f ((λn. n f x) (λf x. x))
+    λf x. f ((λn. n f) (λf x. x) ((λn. x) (λf x. x)))
+    λf x. f ((λn. n) (λf x. x) ((λn. f) (λf x. x)) ((λn. x) (λf x. x)))
+    λf x. f ((λf x. x) ((λn. f) (λf x. x)) ((λn. x) (λf x. x)))
+    λf x. f ((λf x. x) f ((λn. x) (λf x. x)))
+    λf x. f ((λf x. x) f x)
+    λf x. f ((λx. (λf. x) f) x)
+    λf x. f ((λx. x) x)
+    λf x. f x
 
 ### examples/
 
 Y コンビネータによる階乗とフィボナッチ数、べき乗、Ω の入力例です。
 
     $ cat examples/fact.lambda
-    let Y = &f.(&x.(f)(x)x)&x.(f)(x)x;
-    let one = &f.&x.(f)x;
-    let five = &f.&x.(f)(f)(f)(f)(f)x;
-    let fact = (Y)&g.&n.(((#{zero})n)one)((*)n)(g)(#{pred})n;
-    (fact)five
+    let Y = λf. (λx. f (x x)) (λx. f (x x));
+    let one = λf x. f x;
+    let five = λf x. f (f (f (f (f x))));
+    let fact = Y (λg n. #{zero} n one (* n (g (#{pred} n))));
+    fact five
 
     $ ruby lambda.rb -s need -q -c --stats examples/fact.lambda
-    &f.&x.(f)(f)(f)...(f)x
+    λf x. f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (  (120 個の f、以下略)
       = 120
-      steps: 1164  beta: 1164  time: 0.007s
+      steps: 1164  beta: 1164  time: 0.003s
 
     $ ruby lambda.rb -s need -q -c --stats examples/fib.lambda
-    &f.&x.(f)(f)(f)...(f)x
+    λf x. f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (f (  (55 個の f、以下略)
       = 55
-      steps: 11845  beta: 11845  time: 0.070s
+      steps: 11845  beta: 11845  time: 0.029s
 
 ## ベンチマーク
 
@@ -502,7 +530,8 @@ Y コンビネータによる階乗とフィボナッチ数、べき乗、Ω の
 | fib 5 | 96288 (2343) / 8.605s | 13166 (2343) / 2.499s | 2343 / 0.166s | 874 / 0.001s |
 | fib 10 | > 60s | > 60s | 104422 / 10.999s | 11845 / 0.027s |
 
-`revised` の列はこの変更前の簡約機と同じ動作 (規則の適用順も同じ) なので、変更前の数値でもあります。
+`revised` の列は記法の変更前の簡約機と同じ動作 (規則の適用順も同じ) なので、変更前の数値でもあります
+(記法の変更は構文解析と表示だけで、簡約のステップ数は変わりません)。
 
 `revised` は 1 ステップごとに項全体を走査するので、項が大きくなる計算では
 ステップ数と項の大きさの積に時間がかかります。
@@ -517,18 +546,21 @@ Y コンビネータによる階乗とフィボナッチ数、べき乗、Ω の
 または、パーサを生成した上で直接実行します。
 
     $ rake parser
-    $ ruby test_beta2.rb     # revised 規則
+    $ ruby test_beta2.rb     # revised 規則、構文と表示
     $ ruby test_reducer.rb   # 各戦略、循環検出、η、let、コマンドラインオプション
 
 ## 参考文献
+
+記法の変更の経緯と、記法に関する教科書は [doc/notation.md](doc/notation.md) の付録にまとめています。
 
 - G. E. Révész, "Axioms for the theory of lambda-conversion", SIAM Journal on Computing 14(2), pp. 373–382, 1985.
   <https://epubs.siam.org/doi/10.1137/0214028> (代入を使わない改訂 α/β 規則)
 - G. E. Révész, "Rule-based semantics for an extended lambda-calculus", MFPS 1987, LNCS 298.
   <https://link.springer.com/chapter/10.1007/3-540-19020-1_3>
-- G. E. Révész, *Lambda-Calculus, Combinators, and Functional Programming*, Cambridge Tracts in Theoretical Computer Science 4, 1988.
-- H. P. Barendregt, *The Lambda Calculus: Its Syntax and Semantics*, North-Holland, 1984.
-  定理 13.2.2 (最左最外簡約の正規化性)、系 15.1.6 (η 後置性)
+- G. E. Révész, *Lambda-Calculus, Combinators and Functional Programming*, Cambridge Tracts in Theoretical Computer Science 4, Cambridge University Press, 1988.
+  <https://ci.nii.ac.jp/ncid/BA03432683> (旧記法 `(M)N` の出典)
+- H. P. Barendregt, *The Lambda Calculus: Its Syntax and Semantics*, Studies in Logic and the Foundations of Mathematics 103, revised edition, North-Holland, 1984.
+  <https://ci.nii.ac.jp/ncid/BA01309096> 定理 13.2.2 (最左最外簡約の正規化性)、系 15.1.6 (η 後置性)
 - Wikipedia, "Reduction strategy" (normal order は正規化的)
   <https://en.wikipedia.org/wiki/Reduction_strategy>
 - T. Balabonski, P. Barenbaum, E. Bonelli, D. Kesner, "Foundations of strong call-by-need", PACMPL 1 (ICFP), 2017.
