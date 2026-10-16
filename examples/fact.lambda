@@ -1,5 +1,5 @@
-let Y = &f.(&x.(f)(x)x)&x.(f)(x)x;
-let one = &f.&x.(f)x;
-let five = &f.&x.(f)(f)(f)(f)(f)x;
-let fact = (Y)&g.&n.(((#{zero})n)one)((*)n)(g)(#{pred})n;
-(fact)five
+let Y = λf. (λx. f (x x)) (λx. f (x x));
+let one = λf x. f x;
+let five = λf x. f (f (f (f (f x))));
+let fact = Y (λg n. #{zero} n one (* n (g (#{pred} n))));
+fact five

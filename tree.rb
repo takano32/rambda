@@ -6,6 +6,12 @@ class LambdaExpressionNode
   # or the name of the rule chosen by mark_first_redex
   attr_accessor :mark
 
+  # the symbol to_s prints for an abstraction: λ, or \ with --ascii
+  @lambda = 'λ'
+  class << self
+    attr_accessor :lambda
+  end
+
   def initialize
     @mark = nil
   end
@@ -86,27 +92,33 @@ class LambdaExpressionNode
     return nil
   end
 
-  # one leftmost-outermost eta step &x.(E)x -> E (x not free in E):
+  # one leftmost-outermost eta step λx. E x -> E (x not free in E):
   # [term, redex, result] or nil when there is none
   def eta_step
     return nil
   end
 
-  # the term with bound variables as de Bruijn indices, &.&.(#1)#0 for
-  # &f.&x.(f)x: two terms are alpha-equivalent iff their canonical forms are equal
+  # the term with bound variables as de Bruijn indices, λ.λ.#1 (#1 #0) for
+  # λf x. f (f x): two terms are alpha-equivalent iff their canonical forms are equal
   def canonical(env = [])
     s = +''
+    close = 0
     node = self
     bound = 0
     loop do
       case node
       when ApplicationNode
-        s << '(' << node.expr1.canonical(env) << ')'
+        fun = node.expr1
+        s << (fun.instance_of?(AbstractionNode) ? "(#{fun.canonical(env)})" : fun.canonical(env)) << ' '
         node = node.expr2
+        unless node.instance_of?(VariableNode) or node.instance_of?(ConstantNode) then
+          s << '('
+          close += 1
+        end
       when AbstractionNode
         env.push(node.var.to_s)
         bound += 1
-        s << '&.'
+        s << 'λ.'
         node = node.expr
       when VariableNode
         i = env.rindex(node.to_s)
@@ -118,24 +130,39 @@ class LambdaExpressionNode
       end
     end
     env.pop(bound)
-    return s
+    return s << ')' * close
   end
 
-  # (E1)E2 and &x.E; the right spine is printed iteratively so that long
+  # the standard notation with the fewest parentheses: application is left
+  # associative and binds tighter than abstraction, whose body extends as far
+  # right as possible, and nested binders are merged (λf x. f (f x)).  An
+  # abstraction is parenthesized wherever it is applied or an argument.  The
+  # right spine (bodies and arguments) is printed iteratively so that long
   # application chains such as Church numerals do not overflow the stack
   def to_s
     s = +''
+    close = 0
     node = self
     loop do
       case node
       when ApplicationNode
-        s << '(' << node.expr1.to_s << ')'
+        fun = node.expr1
+        s << (fun.instance_of?(AbstractionNode) ? "(#{fun})" : fun.to_s) << ' '
         node = node.expr2
+        unless node.instance_of?(VariableNode) or node.instance_of?(ConstantNode) then
+          s << '('
+          close += 1
+        end
       when AbstractionNode
-        s << '&' << node.var.to_s << '.'
+        s << LambdaExpressionNode.lambda << node.var.to_s
         node = node.expr
+        while node.instance_of?(AbstractionNode) do
+          s << ' ' << node.var.to_s
+          node = node.expr
+        end
+        s << '. '
       else
-        return s << node.to_s
+        return s << node.to_s << ')' * close
       end
     end
   end
@@ -246,7 +273,7 @@ class ApplicationNode < LambdaExpressionNode
 
   RULES = %w[beta1 beta2 beta3 beta4 beta5 alpha]
   # with the garbage collection rule of lambda-x-gc (Bloo and Rose 1995):
-  # (&x.E)Q -> E when x is not free in E, where beta2 and beta3 do not apply
+  # (λx. E) Q -> E when x is not free in E, where beta2 and beta3 do not apply
   RULES_GC = %w[beta1 beta2 beta3 gc beta4 beta5 alpha]
 
   # the rules in use, in order of preference (set by Reducer)
@@ -342,7 +369,7 @@ class ApplicationNode < LambdaExpressionNode
   end
 
 
-  # test alpha: (&x.&y.E)Q where beta4 is blocked,
+  # test alpha: (λx. λy. E) Q where beta4 is blocked,
   # i.e. x is free in E and y is free in Q
   def alpha?
     if @expr1.instance_of?(AbstractionNode) and
@@ -355,7 +382,7 @@ class ApplicationNode < LambdaExpressionNode
     return false
   end
 
-  # (&x.&y.E)Q -> (&x.&z.(&y.E)z)Q, z fresh for E, Q, x and y
+  # (λx. λy. E) Q -> (λx. λz. (λy. E) z) Q, z fresh for E, Q, x and y
   def alpha
     return nil unless alpha?
     used = @expr2.all_variables + [@expr1.var]
@@ -407,7 +434,7 @@ class ApplicationNode < LambdaExpressionNode
     return AbstractionNode.new(@expr1.var, @expr1.expr.expr)
   end
 
-  # (&x.E)Q -> E when x is not free in E (only with RULES_GC)
+  # (λx. E) Q -> E when x is not free in E (only with RULES_GC)
   def gc?
     if @expr1.instance_of?(AbstractionNode) and
         not @expr1.expr.variables.include?(@expr1.var) then
@@ -497,7 +524,7 @@ class AbstractionNode < LambdaExpressionNode
     return AbstractionNode.new(@var.copy, @expr.copy)
   end
 
-  # (&y.E)[x:=Q]: &y.E[x:=Q], after renaming y when it is free in Q
+  # (λy. E)[x:=Q]: λy. E[x:=Q], after renaming y when it is free in Q
   def substitute(name, term)
     return self unless free_vars.include?(name)
     var = @var
@@ -525,7 +552,7 @@ class AbstractionNode < LambdaExpressionNode
     return nil
   end
 
-  # &y.E -> &z.(&y.E)z for a z not used in E, Q, ...
+  # λy. E -> λz. (λy. E) z for a z not used in E, Q, ...
   def alpha(used = [])
     var = fresh_variable(used + all_variables)
     app = ApplicationNode.new(self, var)

@@ -9,30 +9,30 @@ require 'stringio'
 require 'timeout'
 
 PRELUDE = <<~'EOS'
-  let Y = &f.(&x.(f)(x)x)&x.(f)(x)x;
-  let zero = &f.&x.x;
-  let one = &f.&x.(f)x;
-  let two = &f.&x.(f)(f)x;
-  let three = &f.&x.(f)(f)(f)x;
-  let four = &f.&x.(f)(f)(f)(f)x;
-  let five = &f.&x.(f)(f)(f)(f)(f)x;
-  let ten = ((+)five)five;
-  let fact = (Y)&g.&n.(((#{zero})n)one)((*)n)(g)(#{pred})n;
-  let fib = (Y)&g.&n.(((#{zero})n)zero)(((#{zero})(#{pred})n)one)((+)(g)(#{pred})n)(g)(#{pred})(#{pred})n;
+  let Y = λf. (λx. f (x x)) (λx. f (x x));
+  let zero = λf x. x;
+  let one = λf x. f x;
+  let two = λf x. f (f x);
+  let three = λf x. f (f (f x));
+  let four = λf x. f (f (f (f x)));
+  let five = λf x. f (f (f (f (f x))));
+  let ten = + five five;
+  let fact = Y (λg n. #{zero} n one (* n (g (#{pred} n))));
+  let fib = Y (λg n. #{zero} n zero (#{zero} (#{pred} n) one (+ (g (#{pred} n)) (g (#{pred} (#{pred} n))))));
 EOS
 
 WORKLOADS = [
-  ['succ 0', '(#{succ})zero', 1],
-  ['2 + 3', '((+)two)three', 5],
-  ['3 * 4', '((*)three)four', 12],
-  ['2 ^ 5', '(five)two', 32],
-  ['2 ^ 10', '(ten)two', 1024],
-  ['pred 10', '(#{pred})ten', 9],
-  ['fact 3', '(fact)three', 6],
-  ['fact 4', '(fact)four', 24],
-  ['fact 5', '(fact)five', 120],
-  ['fib 5', '(fib)five', 5],
-  ['fib 10', '(fib)ten', 55],
+  ['succ 0', '#{succ} zero', 1],
+  ['2 + 3', '+ two three', 5],
+  ['3 * 4', '* three four', 12],
+  ['2 ^ 5', 'five two', 32],
+  ['2 ^ 10', 'ten two', 1024],
+  ['pred 10', '#{pred} ten', 9],
+  ['fact 3', 'fact three', 6],
+  ['fact 4', 'fact four', 24],
+  ['fact 5', 'fact five', 120],
+  ['fib 5', 'fib five', 5],
+  ['fib 10', 'fib ten', 55],
 ]
 
 STRATEGIES = [

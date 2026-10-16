@@ -79,13 +79,20 @@ class Reducer
   end
 
   # "3", "true", "false" or "0 (false)" when the term is a Church numeral
-  # or boolean (0 and false are the same term), nil otherwise
-  NUMERAL = /\A&\.&\.((?:\(#1\))*)#0\z/
+  # λf x. f (f ... (f x)) or a boolean λx y. x, λx y. y (0 and false are the
+  # same term), nil otherwise; the chain of f is walked iteratively
   def self.church(term)
-    c = term.canonical
-    return 'true' if c == '&.&.#1'
-    m = NUMERAL.match(c) or return nil
-    n = m[1].size / 4
+    return nil unless term.instance_of?(AbstractionNode) and term.expr.instance_of?(AbstractionNode)
+    f = term.var
+    x = term.expr.var
+    node = term.expr.expr
+    return 'true' if f != x and node == f
+    n = 0
+    while f != x and node.instance_of?(ApplicationNode) and node.expr1 == f do
+      n += 1
+      node = node.expr2
+    end
+    return nil unless node == x
     return n == 0 ? '0 (false)' : n.to_s
   end
 

@@ -69,11 +69,12 @@ if __FILE__ == $0 then
   opts.banner = "Usage: #{File.basename($0)} [options] [file]"
   opts.on('-s', '--strategy NAME', Reducer::STRATEGIES,
           "reduction strategy: #{Reducer::STRATEGIES.join(', ')} (default: revised)") {|s| options[:strategy] = s }
-  opts.on('-g', '--gc', 'revised: add the rule gc (&x.E)Q -> E for x not free in E') { options[:gc] = true }
+  opts.on('-g', '--gc', 'revised: add the rule gc (λx. E) Q -> E for x not free in E') { options[:gc] = true }
   opts.on('-l', '--limit N', Integer, "give up after N steps (default: #{Reducer::LIMIT}, 0: no limit)") {|n| options[:limit] = n }
-  opts.on('-e', '--eta', 'eta-reduce the normal form: &x.(E)x -> E for x not free in E') { options[:eta] = true }
+  opts.on('-e', '--eta', 'eta-reduce the normal form: λx. E x -> E for x not free in E') { options[:eta] = true }
   opts.on('-c', '--church', 'annotate the normal form when it is a Church numeral or boolean') { options[:church] = true }
   opts.on('-q', '--quiet', 'print only the normal form') { options[:quiet] = true }
+  opts.on('--ascii', 'print \ instead of λ') { LambdaExpressionNode.lambda = '\\' }
   opts.on('--stats', 'print the number of steps and the time taken') { options[:stats] = true }
   opts.on('-v', '--verbose', 'show the rule and the redex of each step') { verbose = true }
   opts.on('-d', '--debug', 'show the racc parser trace') { debug = true }
